@@ -1,0 +1,443 @@
+---
+title: "ESTUDIO_BIOESTADISTICA"
+author: "Nadia Moltó"
+date: "`r Sys.Date()`"
+output:
+  bookdown::html_document2:
+    fig_caption: yes
+  html_document:
+    fig.caption: yes
+  pdf_document:
+    fig_caption: yes
+  word_document: default
+always_allow_html: yes
+---
+
+```{r setup, include=FALSE}
+
+require(dplyr)
+require(rmarkdown)
+require(readxl)
+library(lmtest)
+library(ggplot2)
+library(tidyverse)
+library(caret)
+library(effects)
+library(leaps)
+library(psych)
+library(FactoMineR)
+library(factoextra)
+library(GGally)
+library(tidyr)
+library(clustertend)
+library(knitr)
+library(performance)
+library(rgl)
+library(kableExtra)
+library(tinytex)
+library(GGally)
+library(plotfunctions)
+library(foreign)
+library(texreg)
+library(report)
+library(car)
+```
+
+<div style="text-align: justify">
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+setwd("C:/Users/nadia/Desktop/PROYECTO_enfermedadx")
+datos_pacientes <- read_excel("base_datos_recurrencia.xls",   na = "-")
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+
+#Pasamos a codigo binario la variable recurrencia_1:
+
+#O lo que es lo mismo:
+
+datos_pacientes <- datos_pacientes %>% mutate(Recu_1 = case_when((Prueba_1 == 1 & Score== "i2b"| Score=="i3"| Score=="i4") ~ 1,(Prueba_1==2 & Score=="MR2"|Score=="MR3") ~ 1, TRUE~ 0)) #Generamos variable de recurrencia morfológica.
+
+```
+
+El presente estudio pretende realizar un análisis estadístico sobre los datos facilitados de pacientes con una determinada enfermedad. Los datos recogidos se corresponden con un seguimiento realizado a estos pacientes transcurridos dos años tras la intervención quirúrgica.
+Para ello, las variables incluidas en los datos facilitados a través de un fichero Excel consistieron en:
+
+Datos censurados:*DIFERENTES BIOMARCADORES ASÍ COMO VARIABLES RELACIONADAS CON LA EDAD, DIAGNOSTICO O HÁBITOS*
+
+
+
+Así pues, el presente análisis se centró en:
+
+**- Explorar las variables disponibles.**
+
+**- Buscar posibles correlaciones entre variables.**
+
+
+En primer lugar, se realizó un análisis exploratorio superficial comprobando así que el número de pacientes incluidos en el fichero facilitado era de 40.
+
+Seguidamente, se procedió con el análisis de los datos mediante estadística descriptiva. Para ello, se partió de la base de que la variable Recu (recurrencia global en los 2 años siguentes a la intervención) era positiva (1) si, al menos, una de las recurrencias específicas era positiva y, por contraposición, era negativa (0) si ninguna del resto de recurrencias específicas era positiva.
+Así pues, se observó una anomalía en unos de los pacientes, en el cual la recurrencia global era negativa pero la recurrencia #### era positiva. Por tanto, debido a una incongruencia en los datos, se consideró que este paciente debía ser retirado del estudio y se recomienda revisión de este dato en concreto. El tamaño muestral, en ese caso, era de n=39.
+
+```{r, include=FALSE}
+datos_pacientes<-datos_pacientes[-30,]
+datos_pacientes_prueba<-datos_pacientes[-34,]
+```
+
+
+A continuación se muestran en las tablas 1, 2, 3, 4 y 5 las tablas resumen de los datos disponibles de inmunohistoquímica en el fichero inicial.
+
+```{r, echo=FALSE}
+a<-summary(datos_pacientes$v1)
+a<- as.matrix(a)
+kable(a, caption="Resumen de las medidas de dispersión de la variable var1", digits=2) %>%  kable_styling(position="center")
+```
+
+```{r, echo=FALSE}
+a<-summary(datos_pacientes$v2)
+a<- as.matrix(a)
+kable(a, caption="Resumen de las medidas de dispersión de la variable var2", digits=2) %>%  kable_styling(position="center")
+```
+
+```{r, echo=FALSE}
+a<-summary(datos_pacientes$v3)
+a<- as.matrix(a)
+kable(a, caption="Resumen de las medidas de dispersión de la variable var3", digits=2) %>%  kable_styling(position="center")
+```
+
+
+```{r, echo=FALSE}
+a<-summary(datos_pacientes$v4)
+a<- as.matrix(a)
+kable(a, caption="Resumen de las medidas de dispersión de la variable var4", digits=2) %>%  kable_styling(position="center")
+```
+
+```{r, echo=FALSE}
+a<-summary(datos_pacientes$v5)
+a<- as.matrix(a)
+kable(a, caption="Resumen de las medidas de dispersión de la variable var5", digits=2) %>%  kable_styling(position="center")
+```
+
+
+Por otro lado, se estimó oportuno observar si el motivo de que los valores entre variables fueran tan distinto podía deberse a la localización de la zona afectada y al número de muestras tomadas para cada zona.
+
+
+En primer lugar, se muestra el número de pacientes clasificados según la localización de la zona afectada:
+
+```{r, echo=FALSE}
+kable(table(datos_pacientes$L), caption="Tabla de frecuencias para la variable L (localización de la zona afectada)",col.names = c("Localización","Frecuencia"), digits=2) %>%  kable_styling(position="center")
+```
+
+Según los datos obtenidos en la tabla 6, únicamente se disponía de datos de pacientes clasificados dentro de los niveles 1, 2, 3 y 5 de la variable localización de la enfermedad. Asimismo, el nivel más común fue el 1, con 29 observaciones. Con esto, los bajos niveles en determinados marcadores podrían atribuirse al muestreo de los pacientes, aunque se desconoce este dato.
+
+El resto de niveles de localización disponían de muy pocos pacientes clasificados, por lo que los datos obtenidos mediante demostraciones gráficas en puntos posteriores no aportaron gran valor al estudio. Aun así, se muestra a continuación la distribución de los valores de las variables de IHQ en base a la localización de la zona afectada mediante diagramas de cajas y bigotes.
+
+```{r, include=FALSE,echo=FALSE}
+
+#Función para graficar varios gráficos de ggplot
+
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+  library(grid)
+
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+
+  numPlots = length(plots)
+
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                    ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+
+ if (numPlots==1) {
+    print(plots[[1]])
+
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+```
+
+
+
+```{r,echo=FALSE, warning=FALSE, fig.cap="Diagramas de cajas y bigotes con los valores de las variables obtenidas por IHQ frente a la zona afectada", fig.align='center'}
+a<-ggplot(datos_pacientes, aes(x=NULL, y= v1, fill=as.factor(L))) + geom_boxplot(alpha=0.4)+labs(y="Valores de var")+ ggtitle("1.1. Boxplot para var1") + theme(plot.title = element_text( size=rel(1),  vjust=2,face="bold", color="Black", lineheight=1.5)) + scale_fill_brewer(palette="Dark2")
+
+b<-ggplot(datos_pacientes, aes(x=NULL, y= v2, fill=as.factor(L))) + geom_boxplot(alpha=0.4)+labs(y="Valores de var2")+ ggtitle("1.2. Boxplot para var2") + theme(plot.title = element_text( size=rel(1),  vjust=2,face="bold", color="Black", lineheight=1.5)) + scale_fill_brewer(palette="Dark2")
+
+c<-ggplot(datos_pacientes, aes(x=NULL, y=v3 , fill=as.factor(L))) + geom_boxplot(alpha=0.4)+labs(y="Valores de var3")+ ggtitle("1.3. Boxplot para var3") + theme(plot.title = element_text( size=rel(1),  vjust=2,face="bold", color="Black", lineheight=1.5)) + scale_fill_brewer(palette="Dark2")
+
+d<-ggplot(datos_pacientes, aes(x=NULL, y=v4 , fill=as.factor(L))) + geom_boxplot(alpha=0.4)+labs(y="Valores de var4")+ ggtitle("1.4. Boxplot para var4") + theme(plot.title = element_text( size=rel(1),  vjust=2,face="bold", color="Black", lineheight=1.5)) + scale_fill_brewer(palette="Dark2")
+
+e<-ggplot(datos_pacientes, aes(x=NULL, y=v5 , fill=as.factor(L))) + geom_boxplot(alpha=0.4)+labs(y="Valores de var5")+ ggtitle("1.5. Boxplot para var5") + theme(plot.title = element_text( size=rel(1),  vjust=2,face="bold", color="Black", lineheight=1.5)) + scale_fill_brewer(palette="Dark2")
+
+multiplot(a,b,c,d,e,cols=2)
+```
+
+
+Otro aspecto a considerar fue el patrón de la enfermedad (B). A continuación en la tabla 7 se muestra la tabla de frecuencias para cada uno de los niveles de la variable patrón de la enfermedad.
+
+```{r, echo=FALSE}
+kable(table(datos_pacientes$B), caption="Tabla de frecuencias para la variable L (localización de la zona afectada)",col.names = c("Localización","Frecuencia"), digits=2) %>%  kable_styling(position="center")
+```
+
+
+```{r warning=FALSE, echo=FALSE, fig.align='center',fig.cap="Diagramas de cajas y bigotes con los valores de las variables obtenidas por IHQ frente al patrón de la enfermedad",fig.align='center'}
+f<-ggplot(datos_pacientes, aes(x=NULL, y= v1, fill=as.factor(B))) + geom_boxplot(alpha=0.4)+labs(y="Valores de var1")+ ggtitle("2.1. Boxplot para var1") + theme(plot.title = element_text( size=rel(1),  vjust=2,face="bold", color="Black", lineheight=1.5)) + scale_fill_brewer(palette="Dark2")
+
+g<-ggplot(datos_pacientes, aes(x=NULL, y= v2, fill=as.factor(B))) + geom_boxplot(alpha=0.4)+labs(y="Valores de var2")+ ggtitle("2.2. Boxplot para var2") + theme(plot.title = element_text( size=rel(1),  vjust=2,face="bold", color="Black", lineheight=1.5)) + scale_fill_brewer(palette="Dark2")
+
+h<-ggplot(datos_pacientes, aes(x=NULL, y=v3 , fill=as.factor(B))) + geom_boxplot(alpha=0.4)+labs(y="Valores de var3")+ ggtitle("2.3. Boxplot para var3") + theme(plot.title = element_text( size=rel(1),  vjust=2,face="bold", color="Black", lineheight=1.5)) + scale_fill_brewer(palette="Dark2")
+
+i<-ggplot(datos_pacientes, aes(x=NULL, y=v4 , fill=as.factor(B))) + geom_boxplot(alpha=0.4)+labs(y="Valores de var4")+ ggtitle("2.4. Boxplot para var4") + theme(plot.title = element_text( size=rel(1),  vjust=2,face="bold", color="Black", lineheight=1.5)) + scale_fill_brewer(palette="Dark2")
+
+j<-ggplot(datos_pacientes, aes(x=NULL, y=v5 , fill=as.factor(B))) + geom_boxplot(alpha=0.4)+labs(y="Valores de var5")+ ggtitle("2.5. Boxplot para var5") + theme(plot.title = element_text( size=rel(1),  vjust=2,face="bold", color="Black", lineheight=1.5)) + scale_fill_brewer(palette="Dark2")
+
+multiplot(f,g,h,i,j,cols=2)
+``` 
+
+Tal y como se aprecia en la figura 2, se disponen 5 gráficos de cajas y bigotes. Cada uno de ellos contiene información para cada tipo de variable obtenida por IHQ. Cada color de caja vendría determinado por la variable categórica "patrón de la enfermedad" (B) tal y como se observa en la leyenda de los gráficos.
+
+En este aspecto, se observó que no había diferencias aparentes entre la expresión de los marcadores y los niveles de la variable estudiada.
+
+
+Por otro lado, considerando la variable recurrencia como prioritaria, se exploró el posible impacto del sexo de los individuos estudados sobre la misma, tal y como puede apreciarse a continuación en la figura 3.
+
+```{r boxplot, echo=FALSE, fig.cap="Recurrencia de los pacientes en base al sexo", warning=FALSE, fig.align='center'}
+ggplot(datos_pacientes, aes(x=as.factor(Recu), y=Edad.dx, fill=as.factor(Sexo))) + geom_boxplot(alpha=0.4)+labs(y="Edad diagnóstico",x="No recurrencia (0) vs Recurrencia(1)")+ ggtitle("Recurrencia en función de la edad de diagnóstico y el sexo") + theme(plot.title = element_text( size=rel(1),  vjust=2,face="bold", color="Black", lineheight=1.5)) + scale_fill_brewer(palette="Dark2")
+```
+
+En la figura 3 se muestran en azul los pacientes masculinos y en naranja los femeninos, mientras que se correspondería con el valor 0 la no recurrencia global y con 1 la recurrencia global. El eje Y representa la edad a la que fueron diagnosticados los pacientes del estudio.
+
+Este gráfico permitió ayudar a determinar la distribución de la recurrencia en función a la edad de diagnóstico y el sexo.
+
+La mediana de la edad de diagnóstico en los pacientes masculinos que recurrían se situó entorno a 25, mientras que en pacientes femeninos entorno a 45.
+
+Por otro lado, se exploraron las edades de diagnóstico y de intervención para cada tipo de recurrencia, tal y como puede apreciarse a continuación en la figura 4.
+
+```{r dotplot, echo=FALSE, fig.cap= "Gráfico de dispersión de las edades de diagnóstico e intervención por recurrencia",message=FALSE, warning=FALSE,fig.align='center'}
+
+
+k<-ggplot(datos_pacientes, aes(x=Edad.dx, y=Edad.qx, color= as.factor(Recu))) + geom_point(shape=16) + labs(title ="4.1.Distribución de edades de diagnóstico e intervención en función de la recurrencia", x="Edad de diagnóstico", y="Edad de intervención", color= "Recurrencia global")
+l<-ggplot(datos_pacientes, aes(x=Edad.dx, y=Edad.qx, color= as.factor(Recu.clinica))) + geom_point(shape=16) + labs(title ="4.2.Distribución de edades de diagnóstico e intervención en función de la recurrencia", x="Edad de diagnóstico", y="Edad de intervención", color= "Recurrencia clínica")
+m<-ggplot(datos_pacientes, aes(x=Edad.dx, y=Edad.qx, color= as.factor(Recu.morfo))) + geom_point(shape=16) + labs(title ="4.3Distribución de edades de diagnóstico e intervención en función de la recurrencia", x="Edad de diagnóstico", y="Edad de intervención", color= "Recurrencia morfológica")
+n<-ggplot(datos_pacientes, aes(x=Edad.dx, y=Edad.qx, color= as.factor(Recu.analitica))) + geom_point(shape=16) + labs(title ="4.4.Distribución de edades de diagnóstico e intervención en función de la recurrencia", x="Edad de diagnóstico", y="Edad de intervención", color= "Recurrencia analítica")
+
+multiplot(k,l,m,n,cols=2)
+
+```
+
+En la figura 4 se representa mediante gráfico de puntos la distribución de las edades de diagnóstico y de intervención para los pacientes con recurrencia (1) y sin recurrencia (0) para cada uno de los tipos de recurrencia.
+
+Cada punto correspondería con un paciente y cada color con la recurrencia (azul) o no recurrencia (rojo).
+
+Por otro lado, se exploró el número de pacientes con (1) y sin (0) cada tipo de recurrencia, tal y como se muestra a continuación en las tablas 8,9,10 y 11.
+
+```{r, echo=FALSE}
+
+kable(datos_pacientes %>% count(Recu), caption="Número de pacientes por recurrencia global", col.names = c("Recurrencia global","Número de pacientes")) %>%  kable_styling(position="center")
+```
+
+
+Por otro lado, se realizó una exploración gráfica de las variables obtenidas por IHQ con respecto a cada tipo de recurrencia, tal y como puede apreciarse en la figura 5.
+
+```{r message=FALSE, warning=FALSE, fig.width=10, fig.height=10, echo=FALSE, fig.align='center', fig.cap="Múltiples diagramas de las variable recurrencia y marcadores obtenidos por IHQ"}
+datos_pacientesx<-subset(datos_pacientes, select=c(Recu,v1,v2,v3,v4,v5, Recu_1, Recu_2, Recu_3))
+datos_pacientesx$Recu<- as.factor(datos_pacientesx$Recu)
+datos_pacientesx$Recu_1<- as.factor(datos_pacientesx$Recu_1)
+datos_pacientesx$Recu_2<- as.factor(datos_pacientesx$Recu_2)
+datos_pacientesx$Recu_3<- as.factor(datos_pacientesx$Recu_3)
+ggpairs(datos_pacientesx, aes(colour=Recu))
+```
+
+En la figura 5 se muestran en rojo los datos de los pacientes que no recurrieron en la enfermedad a nivel global (0) y en azul los de los pacientes que si presentaron recurrencia a nivel global (1).
+Se incluyeron en esta exploración las variables: ########### y cada uno de los tipos de recurrencia específica y global.
+En la figura 5, se analizaron las frecuencias de cada tipo de recurrencia mediante diagrama de barras. Del mismo modo, se analizaron las variables cuantitativas (marcadores de IHQ) frente a las cualitativas (recurrencias) mediante diagrama de cajas y gráficos de dispersión. Las variables cuantitativas se analizaron mediante gráfico de densidad.
+Las conclusiones que se pudieron obtener en base a este gráfico fueron:
+
+*CENSURADO*
+
+Una vez realizado el análisis exploratorio de las variables, se pasó a realizar una búsqueda de correlaciones entre ellas. Para ello, la primera cuestión fue si realmente existían diferencias significativas entre el aumento/disminución de alguno de los marcadores con respecto a la recurrencia a los dos años posteriores de la intervención.
+
+En este caso, se partía de una muestra con 39 pacientes en los que se pretendía ver si los resultados de las pruebas de IHQ tenían alguna correlación con los diferentes tipos de recurrencia. Sin embargo, debido a que el tamaño muestral era pequeño (n=39) y a que, en algunos casos, las observaciones de cada recurrencia eran incluso inferiores a 39, no fue posible realizar inferencia estadística para evaluar el efecto de las pruebas sobre cada tipo de recurrencia considerándolas todas en el modelo estadístico. 
+
+
+Por tal de proceder, se evaluó la idoneidad de realizar un análisis de componentes principales para los datos disponibles, en base a su distribución y/o variabilidad. De esta forma, se emplearon las siguientes pruebas:
+
+- Prueba de Bartlett
+- Medida de adecuación muestral (KMO)
+- Prueba del determinante
+
+Los resultados obtenidos fueron:
+
+- Para la prueba de Bartlett se obtuvo, para un nivel de significación del 5%, un p-valor de 0.39 (superior a 0.05) por lo que el resultado determinó en este punto que la PCA no era una prueba adecuada para los datos disponibles por no estar correlacionados.
+
+- Para la medida de adecuación muestral, se calculó el índice de Kaiser- Meier. En esta prueba se obtuvieron los valores de 0.51, 0.54, 0.67 y 0.54 para ############# respectivamente. El valor global del índice KMO fue de 0.56. Los datos se mantuvieron superiores a 0.5 pero en niveles bajos (no superiores a 0.7), por lo que los resultados permitían seguir con el análisis PCA pese a no ser muy buena la adecuación muestral.
+
+- Para la prueba del determinante de la matriz de correlación se obtuvo un valor de 0.82, siendo muy próximo a 1, con lo cual el supuesto que se pretendía conseguir con esta prueba no fue alcanzado.
+
+Pese a los resultados obtenidos, se procedió con el análisis PCA, obteniendo resultados no concluyentes en los que no se observó un patrón en el comportamiento de las observaciones con respecto a las variables obtenidas por inmunohistoquímica. 
+
+
+```{r include=FALSE}
+#PCA 
+#Variables principales: pruebas de inmunohistoquímica
+data_pca<-datos_pacientes_prueba[1:32,35:38] #training
+data_pca2<-datos_pacientes_prueba[36:39,35:38] #test
+
+pc <- princomp(data_pca, cor=TRUE, scores=TRUE)
+
+#summary(data_pca)
+```
+```{r boxplot_pca, include=FALSE, fig.cap="Boxplot de las variables escaladas de IHQ"}
+
+#Las variables tienen que tener misma variabilidad, por eso escalamos para que m=0 y sd=1, esto se consigue con la función PCA aunque scale también sería otra opción.
+data_pca_scale<- scale(data_pca)
+long<-pivot_longer(as.data.frame(data_pca_scale), cols=1:4)
+ggplot(long, aes(x=name,y=value)) + geom_boxplot()+ theme(axis.text.x = element_text(angle=90))+labs(y="Valor",x="Variables IHQ")+ ggtitle("Gráfico de cajas con los valores de las variables cuantitativas de IHQ") + theme(plot.title = element_text(size=rel(1),  vjust=2,face="bold", color="Black", lineheight=1.5)) + scale_fill_brewer(palette="Dark2")
+
+#En la interpretación habrá que tener en cuenta los valores atípicos observados en el gráfico de cajas.
+```
+```{r, include=FALSE}
+#Como requisito para la PCA, las variables tienen que estar correlacionadas, por ello a continuación se realizan una serie de análisis para verificar si tiene sentido realizar el PCA: prueba de Bartlett, KMO, prueba determinante
+#Primero Bartlett (evalua la relación entre las variables para justificar si la PCA se puede realizar)
+
+cortest<-cortest.bartlett(data_pca, n=40)
+
+```
+```{r, include=FALSE}
+kmo<-KMO(cor(data_pca)) #parámetro kmo 
+#kmo
+#nos devuelve valores muy bajos.
+```
+```{r, include= FALSE}
+det<-det(cor(data_pca)) #determinante de la matriz de correlaciones (prueba de multicolinealidad). Debe de ser positivo y bajo (no es el caso, pero seguimos con el estudio)
+#det
+```
+
+
+```{r dimensiones_pca, include=FALSE}
+res.pca<-PCA(data_pca,graph=FALSE)
+#summary(res.pca)
+kable(get_eigenvalue(res.pca), caption = "Tabla 1: Parámetros de la regla de Kaiser_Guttman para las variables de estudio") #Esto nos da una visión del porcentaje de varianza explicado por cada una de las variables 
+#
+```
+
+
+Una vez finalizada la etapa exploratioria se procedió a realizar inferencia estadística. Tal y como se menciona previamente, debido a la falta de observaciones, fue posible realizar un análisis sobre el efecto de las variables explicativas obtenidas por IHQ sobre la recurrencia de forma global pero no sobre los diferentes tipos de recurrencia considerando toda la información en el mismo modelo. Del mismo modo, la variable correspondiente a la prueba de ##### también fue suprimida debido a la cantidad de valores ausentes contenidos que podían alterar el resultado y que, en caso de eliminación de los mismos, reducían considerablemente el número de observaciones totales.
+Por otro lado, debido al número de observaciones, en el modelo no se pudieron incluir más de 4 variables predictoras y una variable respuesta, aun así, el modelo final obtenido no sería muy robusto si no se ampliaba el número de observaciones.
+
+El método seleccionado para el análisis fue la **regresión logística binaria** debido a la naturaleza de las variables incluidas: 
+
+#######
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+index<- createDataPartition(y=datos_pacientes$Recu, p=0.75, list=FALSE) #75% de las observaciones a train y el resto a test
+train<-datos_pacientes[index,]
+test<- datos_pacientes[-index,]
+#dim(train)
+#dim(test)
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+fit_model<- glm(Recu ~ v1 + v2 + v3 +v4, data=datos_pacientes, family =binomial) 
+```
+
+
+```{r, include=FALSE}
+summary(fit_model)
+
+```
+Se realizó el cálculo y ajuste del modelo de regresión logística con las variables obtenidas mediante IHQ frente a la recurrencia
+
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+library(stargazer)
+tabla<-stargazer(fit_model, type="text")
+
+```
+
+El modelo obtenido predecía la recurrencia basándose en los valores de ######. La potencia de explicación del modelo era moderada (R2=####). El intercepto tomaba un valor de #### (IC 95% [#####]]) y el modelo demostraba que:
+
+- El efecto de ##### era estadísticamente no significativo y negativo (beta = -1.26e-03, IC 95% [-0.02,0.02], p-valor=0.893, std.beta = -0.05).
+- El efecto de #### era estadísticamente no significativo y negativo (beta = -5.21e-03, IC 95% [-0.01,1.63e-03], p-valor=0.162, std.beta = -0.63).
+- El efecto de #### era estadísticamente **significativo** y positivo (beta = -0.02, IC 95% [1.96e-03,0.04], p-valor=0.049, std.beta = 0.81).
+- El efecto de #### era estadísticamente no significativo y negativo (beta = -2.51e-03, IC 95% [-7.49e-03,1.32e-03], p-valor=0.245, std.beta = -0.053).
+
+Por tanto demostraba que la variable #### tenía, para un nivel de significancia del 95%, efecto sobre la recurrencia global de los pacientes estudiados. 
+
+A continuación se realizó un diagnóstico del modelo obtenido por tal de evaluar si el modelo se ajustaba adecuadamente a los datos observados. Para ello, se empleó, en primer lugar, el análisis de residuos.
+
+```{r, echo=FALSE, fig.cap="Análisis de residuos para el modelo obtenido", fig.align='center'}
+par(mfrow=c(2,2))
+plot(fit_model, 1:4)
+par(mfrow=c(2,2))
+```
+Según lo mostrado en la figura 6, los gráficos de residuos en función de los valores ajustados, de normalidad y de escala-localización mostraron que el modelo se ajustaba correctamente a los datos.
+
+Por otro lado, se detectó que los valores asociados a los pacientes con ID 19, 27 y 35 podrían influir en el resultado del análisis al ser valores influyentes que podían distorsionar los parámetros estimados por el modelo. Estos pacientes, se detectan como outliers también en puntos anteriores del estudio.
+
+```{r, include=FALSE}
+influence.measures(fit_model)$is.inf
+```
+
+Se analizó posteriormente la multicolinealidad de las variables debido a una correlación detectada en puntos anteriores entre dos variables (#### y ####) por tal de analizar si esto podría afectar al modelo obtenido. Para ello se analizó el factor de inflación de la varianza (VIF). Los valores obtenidos fueron:
+
+- v1: 1.03
+- v2: 1.17
+- v3: 1.15
+- v4: 1.11
+
+Todos ellos mostraron valores levemente superiores a 1, por lo que podían existir correlaciones moderadas pero no lo suficientemente graves para afectar al resultado global del modelo.
+
+```{r, include=FALSE}
+vif(fit_model)
+```
+```{r message=FALSE, warning=FALSE, include=FALSE}
+#summary(fit_model2)
+#Con este summary vemos como en la nueva ecuación, sigue siendo estadísticamente significativo el efecto de la variable FOXP3.
+```
+
+
+Por tanto, la única variable que - según el modelo obtenido con los los datos proporcionados- mostraba una influencia significativa sobre la recurrencia global fue ####, la cual, con su aumento, aumentaba la probabilidad de recaída.
+
+El efecto de #### sobre la recurrencia se muestra a continuación en la figura 6.
+
+
+```{r , fig.cap="Gráfico de efecto de la variable v1 sobre la recurrencia", echo=FALSE, fig.align='center'}
+plot(allEffects(fit_model), 'var2')
+```
+
+
+En este punto, sabiendo que el parámetro #### mostraba, para los datos analizados, influencia sobre la recaída, se procedió a analizar la probabilidad de recaída en base a este parámetro.
+
+```{r probabilidades, echo=FALSE, fig.cap="Probabilidades de recaída asociadas con los valores de v1 y v2"}
+allEffects(mod=fit_model, xlevels=50)
+```
+
+
+Según el modelo establecido y el análisis realizado, se pudo afirmar que si la probabilidad de recaída era mayor de 73,8%, había una fuerte asociación con la recurrencia del paciente.
+
+
+El resultado del análisis realizado mostró que había una correlación entre el aumento de #### y la recaída de los pacientes a nivel global. Esto significó que (para los pacientes de estudio) se vio que valores más altos de esta variable se asociaban con la recaída en un intervalo de dos años tras la cirugía.
+En cualquier caso, se recomienda considerar que el tamaño muestral era bajo y que el modelo podía presentar resultados sesgados debido a ello. Además, se detectaron diversos outliers que podrían alterar el resultado del modelo obteniendo un resultado no ajustado al comportamiento real de los datos. 
+
+En base a todo lo obtenido, se recomienda aumentar el tamaño muestral para obtener resultados con mayor fiabilidad y poder estudiar un mayor número de variables conjuntamente.
+
+<div/>

@@ -1,0 +1,391 @@
+---
+title: "Entregable tema 5"
+output: html_document
+date: "2023-07-09"
+---
+
+**EJERCICIO 1**
+Vamos a utilizar los datos coagulation del paquete faraway que contienen 24 tiempos de coagulación de sangre de un experimento donde 24 animales fueron aleatoriamente asignados a 4 dietas diferentes y las muestras se tomaron en orden aleatorio (Box, Hunter & Hunter, 1978). Indica si existen diferencias entre los tiempos de coagulación según la dieta del animal, y en tal caso, cómo son estas diferencias. 
+
+```{r message=FALSE, warning=FALSE}
+#Cargamos paquetes
+require(faraway)
+require(dplyr)
+require(rstatix)
+require(ggplot2)
+require(ggpubr)
+require(pwr)
+require(WRS2)
+require (HSAUR)
+require(faraway)
+require(asbio)
+require(emmeans)
+require(car)
+require(PMCMRplus)
+require(ggstatsplot)
+
+data(coagulation)
+summary(coagulation)
+```
+Tenemos una variable categórica con 4 categorías y una variable numérica.
+El test estadístico a emplear sería un ANOVA de una vía para muestras independientes.
+
+Primero exploramos las variables que tenemos:
+```{r}
+coagulation %>% group_by(diet) %>% get_summary_stats()
+coagulation$diet<-as.factor(coagulation$diet)
+```
+
+Vemos como el número de observaciones para cada categoría no es muy elevado.
+
+```{r}
+ggboxplot(coagulation, x="diet", y="coag")
+```
+
+Vemos 3 valores atípicos.
+
+Procedemos a evaluar los supuestos 
+```{r}
+coagulation %>% group_by(diet) %>%  identify_outliers()
+```
+
+Vemos que tenemos los 3 outliers de los cuales uno es un valor extremo.
+
+Vamos a recortar los valores extremos para poder ajustar mejor el modelo.
+
+```{r}
+coagulation %>% group_by(diet) %>%  filter( between(coag, quantile(coag, 0.1), quantile(coag, 0.9))) %>% get_summary_stats(coag, type="mean_sd")
+```
+
+```{r}
+coagulation %>% group_by(diet) %>%  filter( between(coag, quantile(coag, 0.1), quantile(coag, 0.9))) %>% identify_outliers()
+```
+Sigue habiendo un valor pero no es extremo, por lo que seguimos con la prueba considerándola robusta por ahora. El inconveniente es que ya hay pocas observaciones de por si y con esto aun se restan más.
+
+```{r}
+pwr.anova.test(k=4, f=0.25, sig.level = 0.05, power=0.8)
+```
+Realmente, el tamaño muestral adecuado, para un tamaño de efecto  medio, debería ser de casi el doble.
+
+Ahora evaluamos la normalidad:
+
+```{r}
+coagulation %>% group_by(diet) %>%  filter( between(coag, quantile(coag, 0.1), quantile(coag, 0.9))) %>%  ggqqplot("coag",facet.by="diet")
+```
+
+```{r}
+coagulation.rec <- coagulation %>% group_by(diet) %>%  filter( between(coag, quantile(coag, 0.1), quantile(coag, 0.9)))
+
+summary(coagulation.rec$diet)
+```
+
+El test de shapiro no se puede realizar porque si agrupamos por grupos vemos que en el tipo de dieta A hay solo dos observaciones y para realizar el test necesitaríamos al menos 3. En este punto, sabemos que el número de observaciones es inferior al que necesitaríamos para realizar el estudio de forma fiable, aun así, seguimos con este método por tal de desempeñar el ejercicio.
+
+```{r}
+t1way(coag~diet, data=coagulation)
+```
+Vemos como hay diferencias, por lo que debe de haber alguna diferencia en los parámetros de coagulación entre as dietas, al menos para un nivel de significancia del 5% y teniendo en cuenta que la n es muy baja.
+
+Podemos ver entre qué grupos se supone que habría diferencias:
+
+```{r}
+lincon(coag~diet, data=coagulation)
+```
+Las diferencias significativas aparecen entre la dieta A y la B, la A y la C, la B y la D y la C y la D.
+Como se ha mencionado previamente, debido al número de observaciones, especialmente en el grupo A (n=2), estos resultados no serían muy fiables.
+
+Comunicamos:
+
+```{r}
+ggbetweenstats(x=diet, y=coag, data= coagulation, p.adjust.method="bonferroni", bf.message=FALSE, var.equal=TRUE, ggsignif.args=list(textsize= 1.5, tip_lenght=0.01)) + theme(text=element_text(size=8), plot.subtitle=element_text(size=8))
+```
+
+
+**EJERCICIO 2**
+Vamos a comparar la ganancia de peso en ratones según la cantidad y fuente de proteína de los alimentos. Los datos se encuentran en el objeto “weightgain” del paquete HSAUR. Se mide la ganancia en peso de ratas (weigthgain, en gramos) alimentadas con 4 tipos de dietas diferentes, que se distinguen por la cantidad de proteína (type, baja y alta) y por fuente de proteína (source, carne y cereal).
+
+```{r}
+data(weightgain)
+```
+
+En este caso tenemos un modelo estadístico de dos vías para muestras independientes.
+
+Primero exploramos los datos:
+```{r}
+peso <- weightgain # como el nombre del dataframe y de la variable es el mismo, modifico el nombe para no confundirme
+weightgain %>%  group_by(source, type) %>% 
+  get_summary_stats(weightgain) #exploracion
+
+```
+
+```{r}
+ggplot(data=peso, aes(x=type, y=weightgain)) + geom_boxplot(aes(fill=source)) + theme_bw()
+```
+No vemos ningun outlier.
+Vemos también que, aparentemente, en el caso de la dieta con cereal y cantidad de proteina baja, la ganancia de peso es menor con respecto a el otro tipo de dieta.
+
+Ahora vamos a verificar los supuestos de normalidad.
+
+```{r}
+peso %>%  group_by(source, type) %>%  shapiro_test(weightgain)
+```
+
+```{r}
+ggqqplot(peso, "weightgain", ggtheme=theme_bw()) + facet_grid(source~type)
+```
+
+En ningún caso tenemos un p-valor inferior a 0.05 por lo que no podemos rechazar la hipótesis nula de normalidad de los datos. Los gráficos QQ muestran que los datos se distribuyen de forma normal porque todos se mantienen dentro de los intervalos de confianza.
+
+Podemos seguir con la prueba ANOVA paramétrica.
+
+Vamos a testear la homogeneidad de varianza:
+```{r}
+peso %>%  levene_test(weightgain ~ source*type)
+```
+Tenemos un p-valor superior a 0.05 por lo que no podemos rechazar el supuesto de homogeneidad de varianza.
+
+```{r}
+peso %>%  group_by(source, type) %>%  identify_outliers(weightgain)
+```
+
+NO tenemos ningún valor atípico ni extremo, como ya veníamso viendo en los gráficos boxplot.
+
+Ahora ajustamos el modelo:
+
+```{r}
+peso %>%  anova_test(weightgain ~source * type)
+```
+Tenemos que hay diferencias estadísticamente significativas entre la ganancia de peso según la cantidad de proteína. Puesto que esta variable solo tiene dos categorías, no es necesario realizar el análisis post-hoc, sabemos que hay diferencias entre los que conumían cantidad alta y baja, para un nivel de significancia del 0.05.
+
+Comunicamos:
+```{r}
+ggbetweenstats(data= peso, x=type, y=weightgain, results.subtitle=T, messages=T, var.equal=T, p.adjust.method="holm")
+```
+
+
+
+**EJERCICIO 3**
+Evaluaremos el efecto de llevar una capa de invisibilidad. Imaginemos que estamos interesados en el efecto que provoca el uso de un manto de invisibilidad sobre la tendencia de las personas a realizar travesuras. 80 participantes fueron colocados en una comunidad cerrada. Las cámaras ocultas grabaron los actos traviesos que se producían. Se registró cuántos actos traviesos se realizaron en las primeras 3 semanas (mischief1). Después de 3 semanas, 34 participantes fueron informados de que las cámaras estaban apagadas para que nadie pudiera ver lo que estaban haciendo. Los restantes 46 sujetos recibieron un manto de invisibilidad. A estas personas se les dijo que no contaran a nadie más sobre su capa y que podrían usarla cuando quisieran. El número de actos traviesos se registraron durante las próximas 3 semanas (mischief2).
+
+Estos datos ficticios se reúnen en el objeto “invisibility” del paquete WRS2, que contiene 3 variables y 80 observaciones:
+
+cloak. Factor con 34 sujetos en la condición de “sin capa” y 46 en la condición “con la capa”. 
+mischief1. Número de actos traviesos durante las primeras 3 semanas.
+mischief2. Número de actos traviesos durante las segundas 3 semanas.
+
+
+En este caso, tenemos la variable:
+
+- LLeva capa o no lleva capa (grupo control)
+- Número de travesuras 1
+- Número de travesuras 2
+
+El objetivo sería ver si el hecho de llevar capa aumenta el número de travesuras. Para ello, tendríamos que comparar el número de travesuras entre el grupo que lleva frente al que no lleva (control). Además, teemos la variable mischief 1 que puede servirnos para bloquear la covariable de cometer travesuras independientemente del hecho de llevar capa o no.
+En este caso, estamos frente a un ANCOVA. Primero vamos a verificar los supuestos por tal de comprobar que podemos aplicarlo.
+
+
+```{r}
+data(invisibility)
+```
+
+Explorarmos los datos:
+
+```{r}
+par(mfrow=c(2,2))
+ggplot(data=invisibility, aes(x=cloak, y=mischief1)) + geom_boxplot() + theme_bw()
+ggplot(data=invisibility, aes(x=cloak, y=mischief2)) + geom_boxplot() + theme_bw()
+par(mfrow=c(2,2))
+```
+
+De entrada vemos que parece que hay más variabilidad en el caso de las travesuras medidas en el segundo tiempo.
+
+```{r}
+invisibility %>%  group_by(cloak) %>%  shapiro_test(mischief2)
+```
+En principio si se cumpliría el supuesto de normalidad.
+En cuanto al supuesto de homogeneidad de varianza:
+
+```{r}
+invisibility %>%  levene_test(mischief2 ~ cloak)
+```
+Se cumpliría también el supuesto de homogeneidad de varianza.
+
+
+Vamos a comprobar la linealidad
+
+```{r}
+ggscatter(invisibility, x="mischief2", y="mischief1", color="cloak", add="reg.line", size=1)
+```
+Aparentemente si que habría linealidad para ambos grupos de capa y no capa con respecto al número de travesuras antes y después.
+Veamos si habría interacción entre el factor y la covariable:
+
+```{r}
+model<- lm(mischief2 ~mischief1*cloak, data= invisibility)
+anova_test(model)
+```
+
+Vemos como la interacción no sale significativa, por lo que este supuesto quedaría cumplido. 
+
+Por último, comrpobemos si hay outliers:
+
+```{r}
+invisibility %>%  group_by(cloak) %>%  identify_outliers(mischief2)
+```
+
+No hay outliers. Por tanto, se cumplen todos los supuestos excepto el de la linealidad, pero como hemos visto que no hay interacción no es nada grave.
+
+El siguiente paso sería establecer el modelo:
+
+```{r}
+invisibility %>%anova_test(mischief2 ~ mischief1 + cloak)
+```
+El resultado que nos interesa sería el de la variable "cloak" y vemos como sale significativo para un nivel de confianza del 5%. Sin embargo, el tamaño de efecto es pequeño (0.128).
+El análisis post-hoc no haría falta en este caso porque solo tenemos dos categorías.
+
+
+
+**EJERCICIO 4**
+Evaluaremos el efecto de un nuevo tratamiento sobre la producción de huevos de los pollos. Los datos se encuentran en el objeto “eggprod” del paquete faraway. En el experimento se colocaron seis pollitas en 12 corrales divididos en 4 grupos según la ubicación del corral (block, 1-4). Se aplican tres tratamientos a los pollitos (treat, O, E o F) y se registra el número de huevos producidos (eggs).
+
+En este caso tenemos un ANOVA con un factor de bloque
+
+```{r}
+data(eggprod)
+```
+
+Vamos a explorar los datos:
+```{r}
+ggplot(eggprod, aes(x=treat, y=eggs, group=block, linetype=block)) + geom_line() +  theme(legend.position = "top", legend.direction = "horizontal")
+```
+
+Aquí vemos la variabilidad entre la producción de huevos por bloque.
+
+Ahora vamos a evaluar los distintos supuestos.
+En primer lugar, valoramos la aditividad:
+
+```{r}
+with(eggprod, tukey.add.test(eggs, treat, block))
+```
+Como no tenemos un p-valor inferior a 0.05 no podemos decir que no existe interacción entre los bloques y el tratamiento. Si que hay aditividad y no se cumple este supuesto.
+
+En cuanto a la normalidad:
+
+```{r}
+eggprod %>%  group_by(treat) %>%  shapiro_test(eggs)
+```
+Se cumple el supuesto de normalidad para los 3 factores.
+
+Veamos si hay outliers:
+```{r}
+eggprod %>%  group_by(treat) %>%  identify_outliers(eggs)
+```
+Podemos ver como hay un outlier pero no es extremo por lo que no debería alterar mucho los resultados de la prueba estadística.
+
+En cuanto a la homogeneidad de varianza:
+
+```{r}
+eggprod %>%  levene_test(eggs ~ treat)
+```
+Se cumpliría el supuesto de homogeneidad de varianza.
+
+Vamos a ajustar el modelo pero teniendo en cuenta que el supuesto de aditividad no se ha cumplido:
+
+```{r}
+res.aov<- anova_test(data=eggprod, formula= eggs~block + treat)
+res.aov
+```
+Vemos como si que es significativo el efecto del tratamiento, podríamos decir que hay diferencias entre la producción de huevos para los diferentes tipos de tratamientos pero con un p-valor muy ajustado y casi insignificante. Por ello, realizaremos el análisis post-hoc para ver concretamente en qué grupos hay diferencias significativas.
+
+```{r}
+fit<- lm(eggs~+ block + treat, eggprod)
+pwc<- eggprod %>%  emmeans_test(eggs ~treat, model=fit)
+pwc
+```
+Vemos como en el análisis post-hoc no hay diferencias significativas.
+Teniendo en cuenta esto y el supuesto de aditividad, podríamos concluir que en este estudio no se obtienen resultados significativos para un nivel de confianza del 5%.
+
+Comunicamos:
+```{r}
+bxp <-ggboxplot(eggprod, x="treat", y="eggs", color="treat")
+pwc<- pwc %>% add_xy_position(x="treat")
+bxp + stat_pvalue_manual(pwc) + labs(subtitle = get_test_label(res.aov, detailed= T), caption= get_pwc_label(pwc))
+```
+
+
+**EJERCICIO 5**
+Utilizaremos los datos “WeightLoss” del paquete “car” sobre la pérdida de peso y los valores de autoestima durante tres meses en 34 sujetos, para tres grupos: “control”, “dieta” y “dieta + ejercicio”. Queremos evaluar, para los grupos de tratamiento (“dieta” o “dieta + ejercicio”), si ha aumentado el nivel de autoestima a lo largo del tiempo. (Fíjate que no debes analizar la agrupación -solo excluir los casos del control- , y no se pide evaluar la pérdida de peso a lo largo del tiempo).
+
+Lo que se entiende del enunciado es que lo que hay que evaluar es si a lo largo del tiempo los niveles de autoestima han variado entre las personas para aquellas que han realizado dieta o dieta más ejercicio pero sin considerar estos grupos por separado.
+En este caso, tenemos un ANOVA de una vía intra sujeto.
+Si considerásemos los grupos de personas y quisiéramos ver las diferencias tendríamos un ANOVA de dos vías mixto.
+
+```{r}
+data(WeightLoss)
+
+```
+
+Primero hay que pasar los datos a formato largo.
+
+```{r}
+se_<-WeightLoss %>% filter(group %in% c("Diet", "DietEx"))
+#Voy a crear una columna con el identificador para añadirlo en la fórmula a continuación:
+nueva <- as.data.frame(1:11)
+colnames(nueva) <-"id"
+se_long <-cbind(se_, nueva)
+se_long <-se_long %>%  gather(key="se", value="score", se1, se2, se3) %>%  convert_as_factor(group,se)
+```
+
+
+Vamos a visualizar la distribución de los datos.
+
+```{r}
+se_long %>% group_by(se) %>%  get_summary_stats(score, type="mean_sd")
+```
+```{r}
+ggboxplot(x="se", y="score", data= se_long, add=c("mean"), add.params=list(color='red'))
+```
+
+A priori, parece que hay diferencias entre los grupos.
+
+Vamos ahora a verificar los supuestos.
+Primero vamos a ver si hay valores atípicos:
+```{r}
+se_long %>%  group_by(se) %>%  identify_outliers(score)
+```
+
+Vemos que hay 2 valores atípicos pero que no son extremos.
+
+Vamos a verificar el supuesto de normalidad:
+```{r}
+se_long %>% group_by(se) %>%  shapiro_test(score)
+```
+
+Vemos que uno de los p-valores es inferior a 0.05 por lo que en ese caso no se cumpliría el supuesto de normalidad para este factor.
+
+Ahora vamos a verificar si hay esfericidad.
+
+```{r}
+res.aov2<-anova_test(data=se_long, dv=score, wid=id, within = se)
+res.aov2
+```
+
+Vemos que la prueba de MAuchly sale significativa, con lo que no podemos afirmar que los datos cumplan el supuesto de esfericidad. Aun así seguimos con el test.
+
+```{r}
+get_anova_table(res.aov2)
+```
+Esta función realiza corrección de esfericidad, por lo que no es un tema preocupante.
+Hay un p-valor significativo, veamos entre que categorías hay diferencias con el análisis post-hoc.
+
+```{r}
+se_long %>%  pairwise_t_test(score~se, paired=TRUE, p.adjust.method="bonferroni")
+```
+
+
+Vemos como todos los p-valores ajustados son significativos por lo que podríamos decir que hay diferencias entre todos los grupos.
+
+Comunicamos los datos:
+```{r}
+ggwithinstats(x=se, y=score, data=se_long, type="p", bf.message=FALSE,p.adjust.method="bonferroni",ggsignif.args =list(textsize=1.5, tip_lenght=0.01)) + theme(text=element_text(size=8), plot.subtitle=element_text(size=8))
+```
+
